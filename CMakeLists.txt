@@ -6,4 +6,4 @@ project(barrel)
 
 add_executable(fpga_emu src.cpp)
 set_target_properties(fpga_emu PROPERTIES COMPILE_FLAGS "-fintelfpga")
-set_target_properties(fpga_emu PROPERTIES LINK_FLAGS "-fintelfpga")
+set_target_properties(fpga_emu PROPERTIES LINK_FLAGS "-fintelfpga -pthread")

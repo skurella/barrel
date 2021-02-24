@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <vector>
+#include <thread>
 
 using rx_packet_t = int;
 using tx_packet_t = int;
@@ -37,7 +38,7 @@ void receiver(sycl::queue& q) {
 }
 
 class TransmitterGateway;
-tx_packet_t send(sycl::queue& q) {
+tx_packet_t get_packet_to_transmit(sycl::queue& q) {
     std::vector<tx_packet_t> data(1);
     sycl::buffer buf_data { data };
     sycl::event e = q.submit([&](sycl::handler& h) {
@@ -56,7 +57,16 @@ int main() {
 
     receiver(q);
 
-    receive(q, 50);
+    std::thread transmitter_thread([&]() {
+        for(int i = 0; i < 10; i++) {
+            tx_packet_t packet = get_packet_to_transmit(q);
+            std::cout << "Sending: " << packet << std::endl;
+        }
+    });
 
-    std::cout << send(q) << std::endl;
+    for(int i = 0; i < 10; i++) {
+        receive(q, i);
+    }
+
+    transmitter_thread.join();
 }
