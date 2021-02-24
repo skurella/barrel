@@ -7,12 +7,24 @@
 #include <vector>
 #include <thread>
 
-using rx_packet_t = int;
-using tx_packet_t = int;
+enum packet_type_t {
+    // When a `Stop` packet arrives at a kernel, it stops.
+    Stop,
+
+    Data,
+};
+
+struct packet_t {
+    packet_type_t type;
+    int payload;
+};
+
+using rx_packet_t = packet_t;
+using tx_packet_t = packet_t;
 
 namespace pipes {
     using recv = sycl::pipe<class p_recv, rx_packet_t>;
-    using send = sycl::pipe<class p_send, rx_packet_t>;
+    using send = sycl::pipe<class p_send, tx_packet_t>;
 }
 
 class ReceiverGateway;
@@ -28,10 +40,20 @@ class Receiver;
 void receiver(sycl::queue& q) {
     q.submit([&](sycl::handler& h) {
         h.single_task<Receiver>([=]() {
-            while (true) {
+            bool running = true;
+            while (running) {
                 auto packet = pipes::recv::read();
-                // do something with the packet
-                pipes::send::write(packet + 100);
+                switch(packet.type) {
+                case Stop:
+                    running = false;
+                    // Propagate the stop signal to transmitter
+                    pipes::send::write(packet_t { .type = Stop });
+                    break;
+                case Data:
+                    // do something with the packet
+                    pipes::send::write(packet_t { .type = Data, .payload = packet.payload + 100 });
+                    break;
+                }
             }
         });
     });
@@ -51,6 +73,10 @@ tx_packet_t get_packet_to_transmit(sycl::queue& q) {
     return data[0];
 }
 
+void stop(sycl::queue& q) {
+    receive(q, packet_t { .type = Stop });
+}
+
 int main() {
     sycl::INTEL::fpga_emulator_selector device_selector;
     sycl::queue q { device_selector, dpc_common::exception_handler };
@@ -58,15 +84,27 @@ int main() {
     receiver(q);
 
     std::thread transmitter_thread([&]() {
-        for(int i = 0; i < 10; i++) {
+        bool running = true;
+        while(running) {
             tx_packet_t packet = get_packet_to_transmit(q);
-            std::cout << "Sending: " << packet << std::endl;
+            switch(packet.type) {
+            case Stop:
+                running = false;
+                break;
+            case Data:
+                std::cout << "Sending: " << packet.payload << std::endl;
+                break;
+            }
         }
     });
 
     for(int i = 0; i < 10; i++) {
-        receive(q, i);
+        std::cout << "Receiving: " << i << std::endl;
+        receive(q, packet_t { .type = Data, .payload = i });
     }
+
+    std::cout << "Stopping" << std::endl;
+    stop(q);
 
     transmitter_thread.join();
 }
