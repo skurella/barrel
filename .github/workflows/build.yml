@@ -7,7 +7,9 @@ env:
 
 jobs:
   test:
-    container: intel/oneapi-basekit:2021.1-devel-ubuntu18.04
+    runs-on: ubuntu-20.04
+    container:
+      image: intel/oneapi-basekit:2021.1-devel-ubuntu18.04
     steps:
       - uses: actions/checkout@v2
 
