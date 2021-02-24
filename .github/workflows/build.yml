@@ -1,0 +1,25 @@
+name: build
+
+on: [push, pull_request]
+
+env:
+  CI: "1"
+
+jobs:
+  test:
+    container: intel/oneapi-basekit:2021.1-devel-ubuntu18.04
+    steps:
+      - uses: actions/checkout@v2
+
+      # Ensure that all components all compilable.
+      - name: Compile
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          make
+
+      - name: Run
+        run: |
+          cd build
+          ./fpga_emu
