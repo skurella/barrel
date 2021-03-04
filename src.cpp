@@ -6,21 +6,17 @@
 #include <iostream>
 #include <vector>
 #include <thread>
+#include <variant>
 
-enum packet_type_t {
-    // When a `Stop` packet arrives at a kernel, it stops.
-    Stop,
+// When a `Stop` packet arrives at a kernel, it stops.
+struct Stop {};
 
-    Data,
-};
-
-struct packet_t {
-    packet_type_t type;
+struct Data {
     int payload;
 };
 
-using rx_packet_t = packet_t;
-using tx_packet_t = packet_t;
+using rx_packet_t = std::variant<Stop, Data>;
+using tx_packet_t = std::variant<Stop, Data>;
 
 namespace pipes {
     using recv = sycl::pipe<class p_recv, rx_packet_t>;
@@ -36,6 +32,10 @@ void receive(sycl::queue& q, rx_packet_t packet) {
     });
 }
 
+// From <https://en.cppreference.com/w/cpp/utility/variant/visit>
+template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
 class Receiver;
 void receiver(sycl::queue& q) {
     q.submit([&](sycl::handler& h) {
@@ -43,16 +43,13 @@ void receiver(sycl::queue& q) {
             bool running = true;
             while (running) {
                 auto packet = pipes::recv::read();
-                switch(packet.type) {
-                case Stop:
+                if(std::holds_alternative<Stop>(packet)) {
                     running = false;
                     // Propagate the stop signal to transmitter
-                    pipes::send::write(packet_t { .type = Stop });
-                    break;
-                case Data:
+                    pipes::send::write(tx_packet_t(Stop{}));
+                } else if(auto data = std::get_if<Data>(&packet)) {
                     // do something with the packet
-                    pipes::send::write(packet_t { .type = Data, .payload = packet.payload + 100 });
-                    break;
+                    pipes::send::write(tx_packet_t(Data { .payload = data->payload + 100 }));
                 }
             }
         });
@@ -74,7 +71,7 @@ tx_packet_t get_packet_to_transmit(sycl::queue& q) {
 }
 
 void stop(sycl::queue& q) {
-    receive(q, packet_t { .type = Stop });
+    receive(q, rx_packet_t(Stop{}));
 }
 
 int main() {
@@ -87,20 +84,20 @@ int main() {
         bool running = true;
         while(running) {
             tx_packet_t packet = get_packet_to_transmit(q);
-            switch(packet.type) {
-            case Stop:
-                running = false;
-                break;
-            case Data:
-                std::cout << "Sending: " << packet.payload << std::endl;
-                break;
-            }
+            std::visit(overloaded {
+                [&](Stop) {
+                    running = false;
+                },
+                [&](Data &data) {
+                    std::cout << "Sending: " << data.payload << std::endl;
+                },
+            }, packet);
         }
     });
 
     for(int i = 0; i < 10; i++) {
         std::cout << "Receiving: " << i << std::endl;
-        receive(q, packet_t { .type = Data, .payload = i });
+        receive(q, rx_packet_t(Data { .payload = i }));
     }
 
     std::cout << "Stopping" << std::endl;
