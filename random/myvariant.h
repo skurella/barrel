@@ -41,19 +41,16 @@ struct myvariant {
     }
 };
 
-template<typename R, typename ...Ts>
-R visit_union(int, const myunion<Ts...> &, std::function<R(Ts)>...);
-
 template<typename R, typename T>
 R visit_union(int, const myunion<T> &u, std::function<R(T)> f) {
-    return f(u.here);
+    return f(u.value.here);
 }
 
 template<typename R, typename T, typename ...Ts>
 R visit_union(int index, const myunion<T, Ts...> &u, std::function<R(T)> f, std::function<R(Ts)>... fs) {
     if(index == 0) {
-        f(u.here);
+        return f(u.value.here);
     } else {
-        visit_union(index - 1, u.there, fs...);
+        return visit_union(index - 1, u.value.there, fs...);
     }
 }
