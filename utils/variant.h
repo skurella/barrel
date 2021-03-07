@@ -69,6 +69,16 @@ struct variant {
         v(index_of<T, Ts...>::value),
         u(*reinterpret_cast<union_<Ts...>*>(&value)) {}
 
+//    variant(variant<Ts...>&&) = default;
+//    variant(variant<Ts...>&) = default;
+    variant<Ts...> &operator=(variant<Ts...>&) = default;
+    variant<Ts...> &operator=(variant<Ts...> other) {
+        this->v = other.v;
+        this->u = other.u;
+        return *this;
+    }
+    variant() : v(666) {}
+
     template<typename R, typename ...Fs>
     R visit(Fs... fs) const {
         return visit_union<R>(this->v, this->u, fs...);

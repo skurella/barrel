@@ -11,17 +11,11 @@
 
 using utils::variant;
 
-enum packet_type_t {
-    // When a `Stop` packet arrives at a kernel, it stops.
-    Stop,
+// When a `Stop` packet arrives at a kernel, it stops.
+struct Stop {};
+struct Data { int payload; };
 
-    Data,
-};
-
-struct packet_t {
-    packet_type_t type;
-    int payload;
-};
+using packet_t = variant<Stop, Data>;
 
 using rx_packet_t = packet_t;
 using tx_packet_t = packet_t;
@@ -47,17 +41,17 @@ void receiver(sycl::queue& q) {
             bool running = true;
             while (running) {
                 auto packet = pipes::recv::read();
-                switch(packet.type) {
-                case Stop:
-                    running = false;
-                    // Propagate the stop signal to transmitter
-                    pipes::send::write(packet_t { .type = Stop });
-                    break;
-                case Data:
-                    // do something with the packet
-                    pipes::send::write(packet_t { .type = Data, .payload = packet.payload + 100 });
-                    break;
-                }
+                packet.visit<void>(
+                    [&](Stop) {
+                        running = false;
+                        // Propagate the stop signal to transmitter
+                        pipes::send::write(packet_t{ Stop{} });
+                    },
+                    [&](Data data) {
+                        // do something with the packet
+                        pipes::send::write(packet_t { Data { .payload = data.payload + 100 } });
+                    }
+                );
             }
         });
     });
@@ -78,14 +72,7 @@ tx_packet_t get_packet_to_transmit(sycl::queue& q) {
 }
 
 void stop(sycl::queue& q) {
-    receive(q, packet_t { .type = Stop });
-}
-
-void whatis(variant<int, bool> v) {
-    v.visit<void>(
-        [](int i) { std::cout << "int" << i << std::endl; },
-        [](bool b) { std::cout << "bool" << b << std::endl; }
-    );
+    receive(q, packet_t { Stop {} });
 }
 
 int main() {
@@ -98,30 +85,24 @@ int main() {
         bool running = true;
         while(running) {
             tx_packet_t packet = get_packet_to_transmit(q);
-            switch(packet.type) {
-            case Stop:
-                running = false;
-                break;
-            case Data:
-                std::cout << "Sending: " << packet.payload << std::endl;
-                break;
-            }
+            packet.visit<void>(
+                [&](Stop) {
+                    running = false;
+                },
+                [&](Data data) {
+                    std::cout << "Sending: " << data.payload << std::endl;
+                }
+            );
         }
     });
 
     for(int i = 0; i < 10; i++) {
         std::cout << "Receiving: " << i << std::endl;
-        receive(q, packet_t { .type = Data, .payload = i });
+        receive(q, packet_t { Data { .payload = i } });
     }
 
     std::cout << "Stopping" << std::endl;
     stop(q);
 
     transmitter_thread.join();
-
-    variant<int, bool> v_int{1};
-    variant<int, bool> v_bool{false};
-
-    whatis(v_int);
-    whatis(v_bool);
 }
