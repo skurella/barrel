@@ -3,9 +3,13 @@
 
 #include "dpc_common.hpp"
 
+#include "utils/variant.h"
+
 #include <iostream>
 #include <vector>
 #include <thread>
+
+using utils::variant;
 
 enum packet_type_t {
     // When a `Stop` packet arrives at a kernel, it stops.
@@ -77,6 +81,13 @@ void stop(sycl::queue& q) {
     receive(q, packet_t { .type = Stop });
 }
 
+void whatis(variant<int, bool> v) {
+    v.visit<void>(
+        [](int i) { std::cout << "int" << i << std::endl; },
+        [](bool b) { std::cout << "bool" << b << std::endl; }
+    );
+}
+
 int main() {
     sycl::INTEL::fpga_emulator_selector device_selector;
     sycl::queue q { device_selector, dpc_common::exception_handler };
@@ -107,4 +118,10 @@ int main() {
     stop(q);
 
     transmitter_thread.join();
+
+    variant<int, bool> v_int{1};
+    variant<int, bool> v_bool{false};
+
+    whatis(v_int);
+    whatis(v_bool);
 }
