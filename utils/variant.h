@@ -55,15 +55,35 @@ struct index_of<T, X, Ts...> {
     static constexpr int value = index_of<T, Ts...>::value + 1;
 };
 
+template<typename T, typename ...Ts>
+struct head {
+    using type = T;
+};
+
+template<typename T>
+struct return_type;
+
+template<class C, typename R, typename ...Args>
+struct return_type<R(C::*)(Args...)> {
+    using type = R;
+};
+
+template<class C, typename R, typename ...Args>
+struct return_type<R(C::*)(Args...) const> {
+    using type = R;
+};
+
 /**
  * A tagged union, i.e. an union which stores which union member is active.
  * Each type parameter is a possible union member.
  */
 template <typename ...Ts>
 struct variant {
+private:
     int v;
     union_<Ts...> u;
 
+public:
     template<typename T>
     variant(T value) :
         v(index_of<T, Ts...>::value),
@@ -75,11 +95,22 @@ struct variant {
         this->u = other.u;
         return *this;
     }
-    variant() : v(666) {}
 
-    template<typename R, typename ...Fs>
-    R visit(Fs... fs) const {
-        return visit_union<R>(this->v, this->u, fs...);
+    // Default-constructed variant is uninitialized. It is UB to use it without initializing first.
+    variant() {}
+
+    /**
+     * Match on the variant.
+     *
+     * `visit` expects as many arguments as there are variant members.
+     * Each argument must be a function accepting its respective member.
+     * Each function must return the same type, which will be the return type of `visit`.
+     *
+     * The return type is inferred from the first function. (inspired by <https://functionalcpp.wordpress.com/2013/08/05/function-traits/>)
+     */
+    template<typename ...Fs>
+    auto visit(Fs... fs) const -> typename return_type<decltype(&head<Fs...>::type::operator())>::type {
+        return visit_union<typename return_type<decltype(&head<Fs...>::type::operator())>::type>(this->v, this->u, fs...);
     }
 };
 

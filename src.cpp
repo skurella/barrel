@@ -41,7 +41,7 @@ void receiver(sycl::queue& q) {
             bool running = true;
             while (running) {
                 auto packet = pipes::recv::read();
-                packet.visit<void>(
+                packet.visit(
                     [&](Stop) {
                         running = false;
                         // Propagate the stop signal to transmitter
@@ -85,7 +85,7 @@ int main() {
         bool running = true;
         while(running) {
             tx_packet_t packet = get_packet_to_transmit(q);
-            packet.visit<void>(
+            packet.visit(
                 [&](Stop) {
                     running = false;
                 },
